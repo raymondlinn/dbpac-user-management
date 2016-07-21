@@ -27,6 +27,12 @@ class DBPAC_User_Manager {
 
 		// authentication hook
 		add_filter('authenticate', array($this, 'maybe_redirect_at_authenticate'), 101, 3);
+
+		// add redirect logout
+		add_action( 'wp_logout', array( $this, 'redirect_after_logout' ) );
+
+		// redirect user after logged in to member-account
+		add_filter( 'login_redirect', array( $this, 'redirect_after_login' ), 10, 3 );
 	}
 
 	/**
@@ -105,6 +111,10 @@ class DBPAC_User_Manager {
 			}
 		}
 		$attributes['errors'] = $errors;
+
+		// Check if user just logged out
+		$attributes['logged_out'] = isset( $_REQUEST['logged_out'] ) 
+									&& $_REQUEST['logged_out'] == true;
 
 		// Render the login form using an external template
 		return $this->get_template_html('login-form', $attributes);
@@ -239,6 +249,46 @@ class DBPAC_User_Manager {
 	    }
 	     
 	    return __( 'An unknown error occurred. Please try again later.', 'dbpac-login' );
+	}
+
+	/**
+	 * Redirect to custom login page after the user has been logged out.
+	 */
+	public function redirect_after_logout() {
+	    $redirect_url = home_url( 'member-login?logged_out=true' );
+	    wp_safe_redirect( $redirect_url );
+	    exit;
+	}
+
+	/**
+	 * Returns the URL to which the user should be redirected after the (successful) login.
+	 *
+	 * @param string           $redirect_to           The redirect destination URL.
+	 * @param string           $requested_redirect_to The requested redirect destination URL passed as a parameter.
+	 * @param WP_User|WP_Error $user                  WP_User object if login was successful, WP_Error object otherwise.
+	 *
+	 * @return string Redirect URL
+	 */
+	public function redirect_after_login( $redirect_to, $requested_redirect_to, $user ) {
+	    $redirect_url = home_url();
+	 
+	    if ( ! isset( $user->ID ) ) {
+	        return $redirect_url;
+	    }
+	 
+	    if ( user_can( $user, 'manage_options' ) ) {
+	        // Use the redirect_to parameter if one is set, otherwise redirect to admin dashboard.
+	        if ( $requested_redirect_to == '' ) {
+	            $redirect_url = admin_url();
+	        } else {
+	            $redirect_url = $requested_redirect_to;
+	        }
+	    } else {
+	        // Non-admin users always go to their account page after login
+	        $redirect_url = home_url( 'member-account' );
+	    }
+	 
+	    return wp_validate_redirect( $redirect_url, home_url() );
 	}
 
 }
