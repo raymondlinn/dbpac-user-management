@@ -33,6 +33,13 @@ class DBPAC_User_Manager {
 
 		// redirect user after logged in to member-account
 		add_filter( 'login_redirect', array( $this, 'redirect_after_login' ), 10, 3 );
+
+		// Creating shortcod for registration form
+		add_shortcode( 'dbpac-register-form', array( $this, 'render_register_form' ) );
+
+		// hooking login_form_{action} for register
+		add_action( 'login_form_register', array( $this, 'redirect_to_custom_register' ) );
+
 	}
 
 	/**
@@ -51,6 +58,10 @@ class DBPAC_User_Manager {
 				'title' => __('Your Account', 'dbpac-user'),
 				'content' => '[dbpac-account-info]'
 			),
+			'member-register' => array(
+			    'title' => __( 'Register', 'dbpac-login' ),
+			    'content' => '[dbpac-register-form]'
+		    ),
 		);
 
 		foreach ($page_definitions as $slug => $page) {
@@ -289,6 +300,109 @@ class DBPAC_User_Manager {
 	    }
 	 
 	    return wp_validate_redirect( $redirect_url, home_url() );
+	}
+
+
+	/**
+	 * A shortcode for rendering the new user registration form.
+	 *
+	 * @param  array   $attributes  Shortcode attributes.
+	 * @param  string  $content     The text content for shortcode. Not used.
+	 *
+	 * @return string  The shortcode output
+	 */
+	public function render_register_form( $attributes, $content = null ) {
+	    // Parse shortcode attributes
+	    $default_attributes = array( 'show_title' => false );
+	    $attributes = shortcode_atts( $default_attributes, $attributes );
+	 
+	    if ( is_user_logged_in() ) {
+	        return __( 'You are already signed in.', 'dbpac-login' );
+	    } elseif ( ! get_option( 'users_can_register' ) ) {
+	        return __( 'Registering new users is currently not allowed.', 'dbpac-login' );
+	    } else {
+	        return $this->get_template_html( 'registration-form', $attributes );
+	    }
+	}
+
+	/**
+	 * Redirects the user to the custom registration page instead
+	 * of wp-login.php?action=register.
+	 */
+	public function redirect_to_custom_register() {
+	    if ( 'GET' == $_SERVER['REQUEST_METHOD'] ) {
+	        if ( is_user_logged_in() ) {
+	            $this->redirect_logged_in_user();
+	        } else {
+	            wp_redirect( home_url( 'member-register' ) );
+	        }
+	        exit;
+	    }
+	}
+
+	/**
+	 * Validates and then completes the new user signup process if all went well.
+	 *
+	 * @param string $email         The new user's email address
+	 * @param string $first_name    The new user's first name
+	 * @param string $last_name     The new user's last name
+	 * @param string $password     	The new user's password
+	 * @param string $address       The new user's address - to uermeta
+	 * @param string $phone         The new user's phone - to usermeta
+	 *
+	 * @return int|WP_Error         The id of the user that was created, or error if failed.
+	 */
+	private function register_user( $email, $first_name, $last_name, $password, $address, $phone) {
+	    $errors = new WP_Error();
+	 
+	    // Email address is used as both username and email. 
+	    if ( ! is_email( $email ) ) {
+	        $errors->add( 'email', $this->get_error_message( 'email' ) );
+	        return $errors;
+	    }
+	 
+	    if ( username_exists( $email ) || email_exists( $email ) ) {
+	        $errors->add( 'email_exists', $this->get_error_message( 'email_exists') );
+	        return $errors;
+	    }
+
+	    if (empty($password)) {
+	    	$errors->add('password', $this->get_error_message('password'));
+	    	return $errors;
+	    }
+
+	    // since $address and $phone are required, they need to be validated here
+	    if (empty($address)) {
+	    	$errors->add('address', $this->get_error_message('address'));
+	    	return $errors;
+	    }
+	 	
+	 	if (empty($phone)) {
+	    	$errors->add('phone', $this->get_error_message('phone'));
+	    	return $errors;
+	    }
+
+	    // Generate the password so that the subscriber will have to check email...
+	    //$password = wp_generate_password( 12, false );
+	 
+	    $user_data = array(
+	        'user_login'    => $email,
+	        'user_email'    => $email,
+	        'user_pass'     => $password,
+	        'first_name'    => $first_name,
+	        'last_name'     => $last_name,
+	        'nickname'      => $first_name,
+	    );
+	 
+	    $user_id = wp_insert_user( $user_data );
+
+	    // add the usermeta with $address and $phone
+	    update_user_meta($user_id, 'user_address', sanitize_text_field($address));
+	    update_user_meta($user_id, 'user_phone', sanitize_text_field($phone));
+
+	    wp_new_user_notification( $user_id ); // only send notification to admin
+	 
+	    return $user_id;
 	}
 
 }

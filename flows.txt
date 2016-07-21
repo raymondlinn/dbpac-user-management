@@ -1,0 +1,26 @@
+1) add user flows
+	- login
+		- shortcode (render)
+		- templates
+		- redirect from wp-login.php?action=login => to login
+		- redirect logged in user => to account
+		- authentication error
+		- error messages
+		- redirect after logged out => to home page
+		- redirect after logged in => to account
+
+	- register
+		- shortcode (render)
+		- redirect from wp-login.php?action=register => to register
+		
+
+	- forgot password
+	- account
+
+2) utilities
+	- get_template_html
+
+2) add student flows	
+	- create a table
+	- add student info
+	- 
