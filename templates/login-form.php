@@ -8,6 +8,17 @@
 	    <?php endforeach; ?>
 	<?php endif; ?>
 
+    <?php if ( $attributes['registered'] ) : ?>
+        <p class="login-info">
+            <?php
+                printf(
+                    __( 'You have successfully registered to <strong>%s</strong>. We have emailed your password to the email address you entered.', 'personalize-login' ),
+                    get_bloginfo( 'name' )
+                );
+            ?>
+        </p>
+    <?php endif; ?>
+
     <!-- Show logged out message if user just logged out -->
     <?php if ( $attributes['logged_out'] ) : ?>
         <p class="login-info">

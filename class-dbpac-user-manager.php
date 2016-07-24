@@ -40,6 +40,14 @@ class DBPAC_User_Manager {
 		// hooking login_form_{action} for register
 		add_action( 'login_form_register', array( $this, 'redirect_to_custom_register' ) );
 
+		// call the registration cod when user submits the form
+		add_action( 'login_form_register', array( $this, 'do_register_user' ) );
+
+		// Setting for reCAPTCHA
+		add_filter( 'admin_init' , array( $this, 'register_settings_fields' ) );
+
+		// adding the javascript for reCAPTCHA in footer
+		add_action( 'wp_print_footer_scripts', array( $this, 'add_captcha_js_to_footer' ) );
 	}
 
 	/**
@@ -62,6 +70,14 @@ class DBPAC_User_Manager {
 			    'title' => __( 'Register', 'dbpac-login' ),
 			    'content' => '[dbpac-register-form]'
 		    ),
+		    'member-password-lost' => array(
+		        'title' => __( 'Forgot Your Password?', 'dbpac-login' ),
+		        'content' => '[dbpac-password-lost-form]'
+		    ),
+		    'member-password-reset' => array(
+		        'title' => __( 'Pick a New Password', 'dbpac-login' ),
+		        'content' => '[dbpac-password-reset-form]'
+		    )
 		);
 
 		foreach ($page_definitions as $slug => $page) {
@@ -254,6 +270,34 @@ class DBPAC_User_Manager {
 	                'dbpac-login'
 	            );
 	            return sprintf( $err, wp_lostpassword_url() );
+
+	        // Registration errors 
+			case 'email':
+			    return __( 'The email address you entered is not valid.', 'dbpac-login' );
+			 
+			case 'email_exists':
+			    return __( 'An account exists with this email address.', 'dbpac-login' );
+
+			case 'password':
+			    return __( 'The password you entered is not valid.', 'dbpac-login' );
+			 
+			case 'first_name':
+			    return __( 'First name is required', 'dbpac-login' );
+
+			case 'last_name':
+			    return __( 'Last name is required', 'dbpac-login' );
+
+			case 'address':
+			    return __( 'Address is required', 'dbpac-login' );
+
+			case 'phone':
+			    return __( 'Phone number is required', 'dbpac-login' );
+
+			case 'captcha':
+    			return __( 'The Google reCAPTCHA check failed. Are you a robot?', 'personalize-login' );
+			 
+			case 'closed':
+			    return __( 'Registering new users is currently not allowed.', 'dbpac-login' );
 	 
 	        default:
 	            break;
@@ -315,12 +359,28 @@ class DBPAC_User_Manager {
 	    // Parse shortcode attributes
 	    $default_attributes = array( 'show_title' => false );
 	    $attributes = shortcode_atts( $default_attributes, $attributes );
+
+	    // Check if the user just registered
+		$attributes['registered'] = isset( $_REQUEST['registered'] );
+
+		// Retrieve recaptcha key
+		$attributes['recaptcha_site_key'] = get_option( 'dbpac-login-recaptcha-site-key', null );
+
 	 
 	    if ( is_user_logged_in() ) {
 	        return __( 'You are already signed in.', 'dbpac-login' );
 	    } elseif ( ! get_option( 'users_can_register' ) ) {
 	        return __( 'Registering new users is currently not allowed.', 'dbpac-login' );
 	    } else {
+	    	// Retrieve possible errors from request parameters
+			$attributes['errors'] = array();
+			if ( isset( $_REQUEST['register-errors'] ) ) {
+			    $error_codes = explode( ',', $_REQUEST['register-errors'] );
+			 
+			    foreach ( $error_codes as $error_code ) {
+			        $attributes['errors'] []= $this->get_error_message( $error_code );
+			    }
+			}
 	        return $this->get_template_html( 'registration-form', $attributes );
 	    }
 	}
@@ -352,7 +412,7 @@ class DBPAC_User_Manager {
 	 *
 	 * @return int|WP_Error         The id of the user that was created, or error if failed.
 	 */
-	private function register_user( $email, $first_name, $last_name, $password, $address, $phone) {
+	private function register_user($email, $password, $first_name, $last_name, $address, $phone) {
 	    $errors = new WP_Error();
 	 
 	    // Email address is used as both username and email. 
@@ -370,6 +430,16 @@ class DBPAC_User_Manager {
 	    	$errors->add('password', $this->get_error_message('password'));
 	    	return $errors;
 	    }
+
+	    if (empty($first_name)) {
+	    	$errors->add('first_name', $this->get_error_message('first_name'));
+	    	return $errors;
+	    }
+
+	    if (empty($last_name)) {
+	    	$errors->add('last_name', $this->get_error_message('last_name'));
+	    	return $errors;
+	    }	    
 
 	    // since $address and $phone are required, they need to be validated here
 	    if (empty($address)) {
@@ -403,6 +473,124 @@ class DBPAC_User_Manager {
 	    wp_new_user_notification( $user_id ); // only send notification to admin
 	 
 	    return $user_id;
+	}
+
+	/**
+	 * Handles the registration of a new user.
+	 *
+	 * Used through the action hook "login_form_register" activated on wp-login.php
+	 * when accessed through the registration action.
+	 */
+	public function do_register_user() {
+	    if ( 'POST' == $_SERVER['REQUEST_METHOD'] ) {
+	        $redirect_url = home_url( 'member-register' );
+	 
+	        if ( ! get_option( 'users_can_register' ) ) {
+	            // Registration closed, display error
+	            $redirect_url = add_query_arg( 'register-errors', 'closed', $redirect_url );
+	        } elseif ( ! $this->verify_recaptcha() ) {
+			    // Recaptcha check failed, display error
+			    $redirect_url = add_query_arg( 'register-errors', 'captcha', $redirect_url );
+			} else {
+	            $email = $_POST['email'];
+	            $password = $_POST['password'];
+	            $first_name = sanitize_text_field( $_POST['first_name'] );
+	            $last_name = sanitize_text_field( $_POST['last_name'] );
+	            // handle on these following two fileds
+	            $address = sanitize_text_field( $_POST['address'] );
+	            $phone = sanitize_text_field( $_POST['phone'] );
+	 
+	            $result = $this->register_user( $email, $password, $first_name, $last_name , $address, $phone);
+	 
+	            if ( is_wp_error( $result ) ) {
+	                // Parse errors into a string and append as parameter to redirect
+	                $errors = join( ',', $result->get_error_codes() );
+	                $redirect_url = add_query_arg( 'register-errors', $errors, $redirect_url );
+	            } else {
+	                // Success, redirect to login page.
+	                $redirect_url = home_url( 'member-login' );
+	                $redirect_url = add_query_arg( 'registered', $email, $redirect_url );
+	            }
+	        }
+	 
+	        wp_redirect( $redirect_url );
+	        exit;
+	    }
+	}
+
+	/**
+	 * Registers the settings fields needed by the plugin.
+	 */
+	public function register_settings_fields() {
+	    // Create settings fields for the two keys used by reCAPTCHA
+	    register_setting( 'general', 'dbpac-login-recaptcha-site-key' );
+	    register_setting( 'general', 'dbpac-login-recaptcha-secret-key' );
+	 
+	    add_settings_field(
+	        'dbpac-login-recaptcha-site-key',
+	        '<label for="dbpac-login-recaptcha-site-key">' . __( 'reCAPTCHA site key' , 'dbpac-login' ) . '</label>',
+	        array( $this, 'render_recaptcha_site_key_field' ),
+	        'general'
+	    );
+	 
+	    add_settings_field(
+	        'dbpac-login-recaptcha-secret-key',
+	        '<label for="dbpac-login-recaptcha-secret-key">' . __( 'reCAPTCHA secret key' , 'dbpac-login' ) . '</label>',
+	        array( $this, 'render_recaptcha_secret_key_field' ),
+	        'general'
+	    );
+	}
+	 
+	public function render_recaptcha_site_key_field() {
+	    $value = get_option( 'dbpac-login-recaptcha-site-key', '' );
+	    echo '<input type="text" id="dbpac-login-recaptcha-site-key" name="dbpac-login-recaptcha-site-key" value="' . esc_attr( $value ) . '" />';
+	}
+	 
+	public function render_recaptcha_secret_key_field() {
+	    $value = get_option( 'dbpac-login-recaptcha-secret-key', '' );
+	    echo '<input type="text" id="dbpac-login-recaptcha-secret-key" name="dbpac-login-recaptcha-secret-key" value="' . esc_attr( $value ) . '" />';
+	}
+
+	/**
+	 * An action function used to include the reCAPTCHA JavaScript file
+	 * at the end of the page.
+	 */
+	public function add_captcha_js_to_footer() {
+	    echo "<script src='https://www.google.com/recaptcha/api.js'></script>";
+	}
+
+	/**
+	 * Checks that the reCAPTCHA parameter sent with the registration
+	 * request is valid.
+	 *
+	 * @return bool True if the CAPTCHA is OK, otherwise false.
+	 */
+	private function verify_recaptcha() {
+	    // This field is set by the recaptcha widget if check is successful
+	    if ( isset ( $_POST['g-recaptcha-response'] ) ) {
+	        $captcha_response = $_POST['g-recaptcha-response'];
+	    } else {
+	        return false;
+	    }
+	 
+	    // Verify the captcha response from Google
+	    $response = wp_remote_post(
+	        'https://www.google.com/recaptcha/api/siteverify',
+	        array(
+	            'body' => array(
+	                'secret' => get_option( 'personalize-login-recaptcha-secret-key' ),
+	                'response' => $captcha_response
+	            )
+	        )
+	    );
+	 
+	    $success = false;
+	    if ( $response && is_array( $response ) ) {
+	        $decoded_response = json_decode( $response['body'] );
+	        $success = $decoded_response->success;
+	    }
+	 
+	    return $success;
 	}
 
 }
