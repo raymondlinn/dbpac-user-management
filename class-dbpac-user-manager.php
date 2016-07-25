@@ -40,7 +40,7 @@ class DBPAC_User_Manager {
 		// hooking login_form_{action} for register
 		add_action( 'login_form_register', array( $this, 'redirect_to_custom_register' ) );
 
-		// call the registration cod when user submits the form
+		// call the registration code when user submits the form
 		add_action( 'login_form_register', array( $this, 'do_register_user' ) );
 
 		// Setting for reCAPTCHA
@@ -142,6 +142,9 @@ class DBPAC_User_Manager {
 		// Check if user just logged out
 		$attributes['logged_out'] = isset( $_REQUEST['logged_out'] ) 
 									&& $_REQUEST['logged_out'] == true;
+
+		// Check if the user just registered
+		$attributes['registered'] = isset( $_REQUEST['registered'] );
 
 		// Render the login form using an external template
 		return $this->get_template_html('login-form', $attributes);
