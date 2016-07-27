@@ -30,6 +30,13 @@
 		</p>
 	<?php endif; ?>
 
+	<!-- Show password sent message -->
+	<?php if ( $attributes['lost_password_sent'] ) : ?>
+	    <p class="login-info">
+	        <?php _e( 'Check your email for a link to reset your password.', 'personalize-login' ); ?>
+	    </p>
+	<?php endif; ?>
+
 	<?php
 		wp_login_form(
 			array(

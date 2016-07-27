@@ -48,6 +48,16 @@ class DBPAC_User_Manager {
 
 		// adding the javascript for reCAPTCHA in footer
 		add_action( 'wp_print_footer_scripts', array( $this, 'add_captcha_js_to_footer' ) );
+
+		// adding hook login_form_{action} for lost password
+		add_action( 'login_form_lostpassword', array( $this, 'redirect_to_custom_lostpassword' ) );
+
+		// add shortcode for lpassword lost form
+		add_shortcode( 'dbpac-password-lost-form', array( $this, 'render_password_lost_form' ) );
+
+		// hook to the POST for lost password
+		add_action( 'login_form_lostpassword', array( $this, 'do_password_lost' ) );
+
 	}
 
 	/**
@@ -145,6 +155,10 @@ class DBPAC_User_Manager {
 
 		// Check if the user just registered
 		$attributes['registered'] = isset( $_REQUEST['registered'] );
+
+		// Check if the user just requested a new password 
+		$attributes['lost_password_sent'] = isset( $_REQUEST['checkemail'] ) && $_REQUEST['checkemail'] == 'confirm';
+
 
 		// Render the login form using an external template
 		return $this->get_template_html('login-form', $attributes);
@@ -301,6 +315,15 @@ class DBPAC_User_Manager {
 			 
 			case 'closed':
 			    return __( 'Registering new users is currently not allowed.', 'dbpac-login' );
+
+			// Lost password
+ 
+			case 'empty_username':
+			    return __( 'You need to enter your email address to continue.', 'personalize-login' );
+			 
+			case 'invalid_email':
+			case 'invalidcombo':
+			    return __( 'There are no users registered with this email address.', 'personalize-login' );
 	 
 	        default:
 	            break;
@@ -594,6 +617,72 @@ class DBPAC_User_Manager {
 	    }
 	 
 	    return $success;
+	}
+
+	/**
+	 * Redirects the user to the custom "Forgot your password?" page instead of
+	 * wp-login.php?action=lostpassword.
+	 */
+	public function redirect_to_custom_lostpassword() {
+	    if ( 'GET' == $_SERVER['REQUEST_METHOD'] ) {
+	        if ( is_user_logged_in() ) {
+	            $this->redirect_logged_in_user();
+	            exit;
+	        }
+	 
+	        wp_redirect( home_url( 'member-password-lost' ) );
+	        exit;
+	    }
+	}
+
+	/**
+	 * A shortcode for rendering the form used to initiate the password reset.
+	 *
+	 * @param  array   $attributes  Shortcode attributes.
+	 * @param  string  $content     The text content for shortcode. Not used.
+	 *
+	 * @return string  The shortcode output
+	 */
+	public function render_password_lost_form( $attributes, $content = null ) {
+	    // Parse shortcode attributes
+	    $default_attributes = array( 'show_title' => false );
+	    $attributes = shortcode_atts( $default_attributes, $attributes );
+	 
+	    if ( is_user_logged_in() ) {
+	        return __( 'You are already logged in.', 'dbpac-login' );
+	    } else {
+	    	// Retrieve possible errors from request parameters
+			$attributes['errors'] = array();
+			if ( isset( $_REQUEST['errors'] ) ) {
+			    $error_codes = explode( ',', $_REQUEST['errors'] );
+			 
+			    foreach ( $error_codes as $error_code ) {
+			        $attributes['errors'] []= $this->get_error_message( $error_code );
+			    }
+			}
+	        return $this->get_template_html( 'password-lost-form', $attributes );
+	    }
+	}
+
+	/**
+	 * Initiates password reset.
+	 */
+	public function do_password_lost() {
+	    if ( 'POST' == $_SERVER['REQUEST_METHOD'] ) {
+	        $errors = retrieve_password();
+	        if ( is_wp_error( $errors ) ) {
+	            // Errors found
+	            $redirect_url = home_url( 'member-password-lost' );
+	            $redirect_url = add_query_arg( 'errors', join( ',', $errors->get_error_codes() ), $redirect_url );
+	        } else {
+	            // Email sent
+	            $redirect_url = home_url( 'member-login' );
+	            $redirect_url = add_query_arg( 'checkemail', 'confirm', $redirect_url );
+	        }
+	 
+	        wp_redirect( $redirect_url );
+	        exit;
+	    }
 	}
 
 }

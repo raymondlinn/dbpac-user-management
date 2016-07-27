@@ -12,10 +12,16 @@
 	- register
 		- shortcode (render)
 		- redirect from wp-login.php?action=register => to register
-		
+
 
 	- forgot password
 	- account
+		- shortcode
+		- add "student" page if there is any and if no student "add" action
+
+	- student
+		- shortcode
+		- enroll action
 
 2) utilities
 	- get_template_html
