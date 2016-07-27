@@ -58,6 +58,21 @@ class DBPAC_User_Manager {
 		// hook to the POST for lost password
 		add_action( 'login_form_lostpassword', array( $this, 'do_password_lost' ) );
 
+		// replace password message filter
+		add_filter( 'retrieve_password_message', array( $this, 'replace_retrieve_password_message' ), 10, 4 );
+
+		// redirecting reset password to dbpac reset password. There are two actions: rp and resetpass
+		// login_form_{action}
+		add_action( 'login_form_rp', array( $this, 'redirect_to_custom_password_reset' ) );
+		add_action( 'login_form_resetpass', array( $this, 'redirect_to_custom_password_reset' ) );
+
+		// shortcode for reset paswword form
+		add_shortcode( 'custom-password-reset-form', array( $this, 'render_password_reset_form' ) );
+
+		// hook to POST for reset password and rp
+		add_action( 'login_form_rp', array( $this, 'do_password_reset' ) );
+		add_action( 'login_form_resetpass', array( $this, 'do_password_reset' ) );
+
 	}
 
 	/**
@@ -311,7 +326,7 @@ class DBPAC_User_Manager {
 			    return __( 'Phone number is required', 'dbpac-login' );
 
 			case 'captcha':
-    			return __( 'The Google reCAPTCHA check failed. Are you a robot?', 'personalize-login' );
+    			return __( 'The Google reCAPTCHA check failed. Are you a robot?', 'dbpac-login' );
 			 
 			case 'closed':
 			    return __( 'Registering new users is currently not allowed.', 'dbpac-login' );
@@ -319,11 +334,23 @@ class DBPAC_User_Manager {
 			// Lost password
  
 			case 'empty_username':
-			    return __( 'You need to enter your email address to continue.', 'personalize-login' );
+			    return __( 'You need to enter your email address to continue.', 'dbpac-login' );
 			 
 			case 'invalid_email':
 			case 'invalidcombo':
-			    return __( 'There are no users registered with this email address.', 'personalize-login' );
+			    return __( 'There are no users registered with this email address.', 'dbpac-login' );
+
+			// Reset password
+ 
+			case 'expiredkey':
+			case 'invalidkey':
+			    return __( 'The password reset link you used is not valid anymore.', 'dbpac-login' );
+			 
+			case 'password_reset_mismatch':
+			    return __( "The two passwords you entered don't match.", 'dbpac-login' );
+			     
+			case 'password_reset_empty':
+			    return __( "Sorry, we don't accept empty passwords.", 'dbpac-login' );
 	 
 	        default:
 	            break;
@@ -684,6 +711,150 @@ class DBPAC_User_Manager {
 	        exit;
 	    }
 	}
+
+	/**
+	 * Returns the message body for the password reset mail.
+	 * Called through the retrieve_password_message filter.
+	 *
+	 * @param string  $message    Default mail message.
+	 * @param string  $key        The activation key.
+	 * @param string  $user_login The username for the user.
+	 * @param WP_User $user_data  WP_User object.
+	 *
+	 * @return string   The mail message to send.
+	 */
+	public function replace_retrieve_password_message( $message, $key, $user_login, $user_data ) {
+	    // Create new message
+	    $msg  = __( 'Hello!', 'dbpac-login' ) . "\r\n\r\n";
+	    $msg .= sprintf( __( 'You asked us to reset your password for your account using the email address %s.', 'dbpac-login' ), $user_login ) . "\r\n\r\n";
+	    $msg .= __( "If this was a mistake, or you didn't ask for a password reset, just ignore this email and nothing will happen.", 'dbpac-login' ) . "\r\n\r\n";
+	    $msg .= __( 'To reset your password, visit the following address:', 'dbpac-login' ) . "\r\n\r\n";
+	    $msg .= site_url( "wp-login.php?action=rp&key=$key&login=" . rawurlencode( $user_login ), 'login' ) . "\r\n\r\n";
+	    $msg .= __( 'Thanks!', 'dbpac-login' ) . "\r\n";
+	 
+	    return $msg;
+	}
+
+	/**
+	 * Redirects to the custom password reset page, or the login page
+	 * if there are errors.
+	 */
+	public function redirect_to_custom_password_reset() {
+	    if ( 'GET' == $_SERVER['REQUEST_METHOD'] ) {
+	        // Verify key / login combo
+	        $user = check_password_reset_key( $_REQUEST['key'], $_REQUEST['login'] );
+	        if ( ! $user || is_wp_error( $user ) ) {
+	            if ( $user && $user->get_error_code() === 'expired_key' ) {
+	                wp_redirect( home_url( 'member-login?login=expiredkey' ) );
+	            } else {
+	                wp_redirect( home_url( 'member-login?login=invalidkey' ) );
+	            }
+	            exit;
+	        }
+	 
+	        $redirect_url = home_url( 'member-password-reset' );
+	        $redirect_url = add_query_arg( 'login', esc_attr( $_REQUEST['login'] ), $redirect_url );
+	        $redirect_url = add_query_arg( 'key', esc_attr( $_REQUEST['key'] ), $redirect_url );
+	 
+	        wp_redirect( $redirect_url );
+	        exit;
+	    }
+	}
+
+	/**
+	 * A shortcode for rendering the form used to reset a user's password.
+	 *
+	 * @param  array   $attributes  Shortcode attributes.
+	 * @param  string  $content     The text content for shortcode. Not used.
+	 *
+	 * @return string  The shortcode output
+	 */
+	public function render_password_reset_form( $attributes, $content = null ) {
+	    // Parse shortcode attributes
+	    $default_attributes = array( 'show_title' => false );
+	    $attributes = shortcode_atts( $default_attributes, $attributes );
+	 
+	    if ( is_user_logged_in() ) {
+	        return __( 'You are already signed in.', 'dbpac-login' );
+	    } else {
+	        if ( isset( $_REQUEST['login'] ) && isset( $_REQUEST['key'] ) ) {
+	            $attributes['login'] = $_REQUEST['login'];
+	            $attributes['key'] = $_REQUEST['key'];
+	 
+	            // Error messages
+	            $errors = array();
+	            if ( isset( $_REQUEST['error'] ) ) {
+	                $error_codes = explode( ',', $_REQUEST['error'] );
+	 
+	                foreach ( $error_codes as $code ) {
+	                    $errors []= $this->get_error_message( $code );
+	                }
+	            }
+	            $attributes['errors'] = $errors;
+	 
+	            return $this->get_template_html( 'password-reset-form', $attributes );
+	        } else {
+	            return __( 'Invalid password reset link.', 'dbpac-login' );
+	        }
+	    }
+	}
+
+	/**
+	 * Resets the user's password if the password reset form was submitted.
+	 */
+	public function do_password_reset() {
+	    if ( 'POST' == $_SERVER['REQUEST_METHOD'] ) {
+	        $rp_key = $_REQUEST['rp_key'];
+	        $rp_login = $_REQUEST['rp_login'];
+	 
+	        $user = check_password_reset_key( $rp_key, $rp_login );
+	 
+	        if ( ! $user || is_wp_error( $user ) ) {
+	            if ( $user && $user->get_error_code() === 'expired_key' ) {
+	                wp_redirect( home_url( 'member-login?login=expiredkey' ) );
+	            } else {
+	                wp_redirect( home_url( 'member-login?login=invalidkey' ) );
+	            }
+	            exit;
+	        }
+	 
+	        if ( isset( $_POST['pass1'] ) ) {
+	            if ( $_POST['pass1'] != $_POST['pass2'] ) {
+	                // Passwords don't match
+	                $redirect_url = home_url( 'member-password-reset' );
+	 
+	                $redirect_url = add_query_arg( 'key', $rp_key, $redirect_url );
+	                $redirect_url = add_query_arg( 'login', $rp_login, $redirect_url )
+	                $redirect_url = add_query_arg( 'error', 'password_reset_mismatch', $redirect_url );
+	 
+	                wp_redirect( $redirect_url );
+	                exit;
+	            }
+	 
+	            if ( empty( $_POST['pass1'] ) ) {
+	                // Password is empty
+	                $redirect_url = home_url( 'member-password-reset' );
+	 
+	                $redirect_url = add_query_arg( 'key', $rp_key, $redirect_url );
+	                $redirect_url = add_query_arg( 'login', $rp_login, $redirect_url );
+	                $redirect_url = add_query_arg( 'error', 'password_reset_empty', $redirect_url );
+	 
+	                wp_redirect( $redirect_url );
+	                exit;
+	            }
+	 
+	            // Parameter checks OK, reset password
+	            reset_password( $user, $_POST['pass1'] );
+	            wp_redirect( home_url( 'member-login?password=changed' ) );
+	        } else {
+	            echo "Invalid request.";
+	        }
+	 
+	        exit;
+	    }
+	}
+
+
 
 }
 
