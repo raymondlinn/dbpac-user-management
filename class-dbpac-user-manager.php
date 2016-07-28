@@ -67,7 +67,7 @@ class DBPAC_User_Manager {
 		add_action( 'login_form_resetpass', array( $this, 'redirect_to_custom_password_reset' ) );
 
 		// shortcode for reset paswword form
-		add_shortcode( 'custom-password-reset-form', array( $this, 'render_password_reset_form' ) );
+		add_shortcode( 'dbpac-password-reset-form', array( $this, 'render_password_reset_form' ) );
 
 		// hook to POST for reset password and rp
 		add_action( 'login_form_rp', array( $this, 'do_password_reset' ) );
