@@ -824,7 +824,7 @@ class DBPAC_User_Manager {
 	                $redirect_url = home_url( 'member-password-reset' );
 	 
 	                $redirect_url = add_query_arg( 'key', $rp_key, $redirect_url );
-	                $redirect_url = add_query_arg( 'login', $rp_login, $redirect_url )
+	                $redirect_url = add_query_arg( 'login', $rp_login, $redirect_url );
 	                $redirect_url = add_query_arg( 'error', 'password_reset_mismatch', $redirect_url );
 	 
 	                wp_redirect( $redirect_url );
