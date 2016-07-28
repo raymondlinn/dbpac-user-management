@@ -174,6 +174,9 @@ class DBPAC_User_Manager {
 		// Check if the user just requested a new password 
 		$attributes['lost_password_sent'] = isset( $_REQUEST['checkemail'] ) && $_REQUEST['checkemail'] == 'confirm';
 
+		// Check if user just updated password
+		$attributes['password_updated'] = isset( $_REQUEST['password'] ) && $_REQUEST['password'] == 'changed';
+
 
 		// Render the login form using an external template
 		return $this->get_template_html('login-form', $attributes);
