@@ -26,7 +26,28 @@
 2) utilities
 	- get_template_html
 
-2) add student flows	
+3) add student flows	
 	- create a table
 	- add student info
 	- 
+
+Creating Student Table
+
+columns
+# Student Info
+- ID 			- BIGINT(20)
+- user_id		- BIGINT(20) # foriegn key
+- lname			- VARCHAR(64)
+- fname			- VACHAR(64)
+- dob			- DATE
+# Enrollment Form
+- instrument	- VACHAR(64)
+- division		- VACHAR(64)
+- enrolled_year	- YEAR
+- song_title	- VACHAR(64)
+- composer_name	- VACHAR(128)
+- duration		- INT
+- accomp_name	- VACHAR(128)
+- accomp_phone	- VACHAR(15)
+- fees			- DECIMAL(5,2)
+- paid			- BOOL
