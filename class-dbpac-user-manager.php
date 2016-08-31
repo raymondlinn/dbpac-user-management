@@ -73,6 +73,9 @@ class DBPAC_User_Manager {
 		add_action( 'login_form_rp', array( $this, 'do_password_reset' ) );
 		add_action( 'login_form_resetpass', array( $this, 'do_password_reset' ) );
 
+		// adding the login logout to menu
+		add_filter('wp_nav_menu_items', 'add_login_logout_link', 10, 2);
+
 	}
 
 	/**
@@ -857,6 +860,17 @@ class DBPAC_User_Manager {
 	    }
 	}
 
+	function add_login_logout_link($items, $args) {
+
+		ob_start();
+		wp_loginout('index.php');
+		$loginoutlink = ob_get_contents();
+		ob_end_clean();
+
+		$items .= '<li>'. $loginoutlink .'</li>';
+
+		return $items;
+	}
 
 
 }
