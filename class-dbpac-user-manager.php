@@ -82,6 +82,7 @@ class DBPAC_User_Manager {
 	 *
 	 * Creates necessary pages needed by the plugin
 	 */
+	
 	public static function activate_plugin() {
 		// Information needed for creating the plugin;s pages
 		$page_definitions = array(
@@ -126,6 +127,7 @@ class DBPAC_User_Manager {
 			}
 		}
 	}
+	
 
 
 	/**
@@ -368,7 +370,7 @@ class DBPAC_User_Manager {
 	 * Redirect to custom login page after the user has been logged out.
 	 */
 	public function redirect_after_logout() {
-	    $redirect_url = home_url( 'member-login?logged_out=true' );
+	    $redirect_url = home_url('/'); //home_url( 'member-login?logged_out=true' );
 	    wp_safe_redirect( $redirect_url );
 	    exit;
 	}
@@ -799,6 +801,7 @@ class DBPAC_User_Manager {
 	 
 	            return $this->get_template_html( 'password-reset-form', $attributes );
 	        } else {
+	        	// add the error page
 	            return __( 'Invalid password reset link.', 'dbpac-login' );
 	        }
 	    }
